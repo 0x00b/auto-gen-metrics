@@ -1,14 +1,12 @@
 package auto_gen_metrics
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"reflect"
 	"strings"
-	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-func InitMetrics(App, Module string, Metrics interface{}) {
+func InitMetrics(prefix string, Metrics interface{}) {
 	s := reflect.ValueOf(Metrics).Elem()
 	typeOfAttr := s.Type()
 	for i := 0; i < s.NumField(); i++ {
@@ -16,9 +14,12 @@ func InitMetrics(App, Module string, Metrics interface{}) {
 		f.SetInt(int64(i))
 		name := typeOfAttr.Field(i).Name
 		if ParseAttrName == nil {
-			name = App + "_" + Module + "_" + DefaultParseAttrName(name)
+			name =  DefaultParseAttrName(name)
 		} else {
-			name = App + "_" + Module + "_" + ParseAttrName(name)
+			name =  ParseAttrName(name)
+		}
+		if prefix !=""{
+			name = prefix + "_" +name
 		}
 		ftype := f.Type().String()
 		flen := len(ftype)
@@ -52,21 +53,6 @@ func InitMetrics(App, Module string, Metrics interface{}) {
 		default:
 		}
 	}
-
-	var hostReport = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "_" + App + "_" + Module + "_host",
-		})
-	prometheus.MustRegister(hostReport)
-	go func() {
-		timer := time.NewTicker(30 * time.Second)
-		for {
-			select {
-			case <-timer.C:
-				hostReport.Inc()
-			}
-		}
-	}()
 }
 
 var ParseAttrName ParseAttrNameFunc = nil

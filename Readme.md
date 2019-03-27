@@ -19,6 +19,8 @@ const (
 // 1、在Metrics结构体中添加需要上报的属性名以及对应的类型
 // 2、使用相应的属相上报方法上报属性
 
+//注：本例中的一切命名都可按自己的命名规范来
+
 var M Metrics
 
 //默认会将这里的名字转换成小写的上报到prometheus，以符合prometheus和grafana的命名规范
@@ -37,7 +39,7 @@ type Metrics struct {
 func main() {
 	//初始化，最终的metrics = App_Module_MetricName
 	//eg:  app_mod_receive_request_total
-	m.InitMetrics(App, Module, &M)
+	m.InitMetrics(App+"_"+Module, &M)
 
 	e := http.NewServeMux()
 	e.Handle("/metrics", promhttp.Handler())
@@ -47,5 +49,6 @@ func main() {
 	})
 	http.ListenAndServe(":8888", e)
 }
+
 
 ```

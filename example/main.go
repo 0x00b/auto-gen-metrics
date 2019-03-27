@@ -36,7 +36,7 @@ type Metrics struct {
 func main() {
 	//初始化，最终的metrics = App_Module_MetricName
 	//eg:  app_mod_receive_request_total
-	m.InitMetrics(App, Module, &M)
+	m.InitMetrics(App+"_"+Module, &M)
 
 	e := http.NewServeMux()
 	e.Handle("/metrics", promhttp.Handler())
