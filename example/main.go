@@ -1,7 +1,7 @@
 package main
 
 import (
-	m "auto-gen-metrics"
+	m "github.com/0x00b/auto-gen-metrics"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 )
