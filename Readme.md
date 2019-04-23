@@ -21,31 +21,46 @@ const (
 
 //注：本例中的一切命名都可按自己的命名规范来
 
-var M Metrics
 
-//默认会将这里的名字转换成小写的上报到prometheus，以符合prometheus和grafana的命名规范
-//如果自己有自己的名字转换规则可以设置 attr.ParseAttrName 函数替换成自己的规则
-type Metrics struct {
+var PM PromMetrics
+
+//另一种实现方式，不过不能进行功能扩展，例如公共的labels需要额外处理
+//不过可以直接用prometheus的metric类型带来的全部能力
+type PromMetrics struct {
 	//上报的属性名/prometheus类型
-	RECEIVE_REQUEST_RATE    m.Gauge //目前只支持Counter ，Gauge功能还未实现
-	RECEIVE_REQUEST_TOTAL   m.Counter
-	DEAL_REQUEST_SUCC_TOTAL m.Counter
-	DEAL_REQUEST_FAIL_TOTAL m.Counter
+	RECEIVE_REQUEST_RATE    prometheus.GaugeVec   //目前只支持Counter ，Gauge功能还未实现
+	RECEIVE_REQUEST_TOTAL   prometheus.CounterVec `pml:";label1,label2;"` //有两个标签，label1,label2
+	DEAL_REQUEST_SUCC_TOTAL prometheus.CounterVec
+	DEAL_REQUEST_FAIL_TOTAL prometheus.CounterVec
 
 	//TODO: add your metrics
-
+	RecvTestTotal prometheus.Counter `pml:"recv_test_total;;namespace;subsys;help msg"`
 }
 
-func main() {
-	//初始化，最终的metrics = App_Module_MetricName
-	//eg:  app_mod_receive_request_total
-	m.InitMetrics(App+"_"+Module, &M)
 
+func main() {
+	am.InitMetrics(App+"_"+Module, &m.PM, pm.Labels{"Public1": "test1", "Public2": "test2"},[]string{"AppId"})
+	//am.InitMetrics2(App+"_"+Module, &m.PM, nil, []string{"AppId"})
 	e := http.NewServeMux()
 	e.Handle("/metrics", promhttp.Handler())
 	e.HandleFunc("/test", func(writer http.ResponseWriter, request *http.Request) {
-		//直接使用counter的上报方法上报属性即可
-		m.AttrCounterInc(M.RECEIVE_REQUEST_TOTAL)
+		m.PM.DEAL_REQUEST_SUCC_TOTAL.With(am.GetLabels(
+			pm.Labels{"AppId": "appid1"})).Inc()
+
+		m.PM.RECEIVE_REQUEST_TOTAL.With(am.GetLabels(pm.Labels{
+			"AppId":  "appid1",
+			"label1": "test1",
+			"label2": "test2",
+		})).Inc()
+
+		m.PM.RECEIVE_REQUEST_TOTAL.WithLabelValues(am.GetLvs("appid1", "xxx", "xxx")...).Inc()
+
+		t, err := m.PM.RECEIVE_REQUEST_TOTAL.GetMetricWith(am.GetLabels(pm.Labels{
+			"AppId": "appid1", "label1": "test1", "label2": "test2"}))
+		if err == nil {
+			t.Inc()
+		}
+		m.PM.RecvTestTotal.Inc()
 	})
 	http.ListenAndServe(":8888", e)
 }
