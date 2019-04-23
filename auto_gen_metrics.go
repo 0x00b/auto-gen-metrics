@@ -121,17 +121,47 @@ func GetCounter(prefix, name string, publicKeys, rfTags []string) prometheus.Cou
 func GetCounterVec(prefix, name string, publicKeys, rfTags []string) *prometheus.CounterVec {
 	tags := getTags(publicKeys, rfTags)
 	name = getName(prefix, name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+	help := ""
+	if len(rfTags) > 4 {
+		help = rfTags[4]
+	}
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: name,
+			Name:      name,
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Help:      help,
 		}, tags)
 }
 func GetGaugeVec(prefix, name string, publicKeys, rfTags []string) *prometheus.GaugeVec {
 	tags := getTags(publicKeys, rfTags)
 	name = getName(prefix, name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+	help := ""
+	if len(rfTags) > 4 {
+		help = rfTags[4]
+	}
 	return prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: name,
+			Name:      name,
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Help:      help,
 		}, tags)
 }
 
