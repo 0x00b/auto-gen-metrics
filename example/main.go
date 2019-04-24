@@ -17,32 +17,39 @@ const (
 func main() {
 	//两种方式选一
 	//SelfMetrics()
-	PromMetrics()
+	PromMetrics() //推荐
 }
 
 func PromMetrics() {
-	am.InitMetrics(App+"_"+Module, &m.PM, pm.Labels{"Public1": "test1", "Public2": "test2"},[]string{"AppId"})
-	//am.InitMetrics2(App+"_"+Module, &m.PM, nil, []string{"AppId"})
+	//am.InitMetrics(App+"_"+Module, &m.PM, pm.Labels{"Public1": "test1", "Public2": "test2"},[]string{"AppId"})
+	//am.InitMetrics(App+"_"+Module, &m.PM, nil, []string{"AppId"})
+	am.InitMetrics("", &m.PM, nil, nil)
 	e := http.NewServeMux()
 	e.Handle("/metrics", promhttp.Handler())
 	e.HandleFunc("/test", func(writer http.ResponseWriter, request *http.Request) {
 		m.PM.DEAL_REQUEST_SUCC_TOTAL.With(am.GetLabels(
-			pm.Labels{"AppId": "appid1"})).Inc()
+			//pm.Labels{"AppId": "appid1"}),
+		nil)).Inc()
 
-		m.PM.RECEIVE_REQUEST_TOTAL.With(am.GetLabels(pm.Labels{
-			"AppId":  "appid1",
+		m.PM.EXAMPLE_TOTAL.With(am.GetLabels(pm.Labels{
+			//"AppId":  "appid1",
 			"label1": "test1",
 			"label2": "test2",
 		})).Inc()
 
-		m.PM.RECEIVE_REQUEST_TOTAL.WithLabelValues(am.GetLvs("appid1", "xxx", "xxx")...).Inc()
+		m.PM.RECEIVE_REQUEST_TOTAL.WithLabelValues(am.GetLvs(
+			//"appid1",
+			"xxx",
+			"xxx")...).Inc()
 
 		t, err := m.PM.RECEIVE_REQUEST_TOTAL.GetMetricWith(am.GetLabels(pm.Labels{
-			"AppId": "appid1", "label1": "test1", "label2": "test2"}))
+			//"AppId": "appid1",
+			"label1": "test1",
+			"label2": "test2"}))
 		if err == nil {
 			t.Inc()
 		}
-		m.PM.RecvTestTotal.Inc()
+		m.PM.RECV_TEST_TOTAL.Inc()
 	})
 	http.ListenAndServe(":8888", e)
 }
