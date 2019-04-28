@@ -3,7 +3,9 @@ package auto_gen_metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"reflect"
+	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -13,10 +15,10 @@ func InitMetrics2(prefix string, Metrics interface{}, labels prometheus.Labels, 
 	publicLabels = labels
 	var publicKeys []string
 	publicLvs = publicLvs[:0]
-	for key, value := range publicLabels {
-		publicKeys = append(publicKeys, key)
-		publicLvs = append(publicLvs, value)
-	}
+	//for key, value := range publicLabels {
+	//	publicKeys = append(publicKeys, key)
+	//	publicLvs = append(publicLvs, value)
+	//}
 	for _, value := range publicTags {
 		publicKeys = append(publicKeys, value)
 	}
@@ -29,10 +31,10 @@ func InitMetrics2(prefix string, Metrics interface{}, labels prometheus.Labels, 
 		fLen := len(fType)
 		switch true {
 		case fType[fLen-len("Counter"):] == "Counter":
-			counterMap[i] = GetCounterVec(prefix, name, publicKeys, rfTags)
+			counterMap[i] = GetCounterVec(prefix, name, labels, publicKeys, rfTags)
 			prometheus.MustRegister(counterMap[i])
 		case fType[fLen-len("Gauge"):] == "Gauge":
-			gaugeMap[i] = GetGaugeVec(prefix, name, publicKeys, rfTags)
+			gaugeMap[i] = GetGaugeVec(prefix, name, labels, publicKeys, rfTags)
 			prometheus.MustRegister(gaugeMap[i])
 		//case fType[fLen-len("Summary"):] == "Summary":
 		//	summaryMap[i] = prometheus.NewSummaryVec(prometheus.SummaryOpts{
@@ -58,36 +60,62 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 	publicLabels = labels
 	var publicKeys []string
 	publicLvs = publicLvs[:0]
-	for key, value := range publicLabels {
-		publicKeys = append(publicKeys, key)
-		publicLvs = append(publicLvs, value)
-	}
+	//for key, value := range publicLabels {
+	//	publicKeys = append(publicKeys, key)
+	//	publicLvs = append(publicLvs, value)
+	//}
 	for _, value := range publicTags {
 		publicKeys = append(publicKeys, value)
 	}
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
-		//f.SetInt(int64(i))
+
 		fName := typeOfAttr.Field(i).Name
 
 		rfTags := strings.Split(typeOfAttr.Field(i).Tag.Get("pml"), ";")
 
 		var counterVec prometheus.CounterVec
 		var gaugeVec prometheus.GaugeVec
+		var sumVec prometheus.SummaryVec
+		var histVec prometheus.HistogramVec
 
 		fType := f.Type().String()
 		switch true {
+		//Counter
 		case reflect.TypeOf(counterVec).String() == fType:
-			metric := GetCounterVec(prefix, fName, publicKeys, rfTags)
+			metric := GetCounterVec(prefix, fName, publicLabels, publicKeys, rfTags)
 			*(*prometheus.CounterVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
 			prometheus.MustRegister(metric)
 		case "prometheus.Counter" == fType:
-			metric := GetCounter(prefix, fName, publicKeys, rfTags)
+			metric := GetCounter(prefix, fName, publicLabels, publicKeys, rfTags)
 			*(*prometheus.Counter)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
 			prometheus.MustRegister(metric)
+			//Gauge
 		case reflect.TypeOf(gaugeVec).String() == fType:
-			metric := GetGaugeVec(prefix, fName, publicKeys, rfTags)
+			metric := GetGaugeVec(prefix, fName, publicLabels, publicKeys, rfTags)
 			*(*prometheus.GaugeVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			prometheus.MustRegister(metric)
+		case "prometheus.Gauge" == fType:
+			metric := GetGauge(prefix, fName, publicLabels, publicKeys, rfTags)
+			*(*prometheus.Gauge)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
+			prometheus.MustRegister(metric)
+			//Summary
+		case reflect.TypeOf(sumVec).String() == fType:
+			metric := GetSummaryVec(prefix, fName, publicLabels, publicKeys, rfTags)
+			*(*prometheus.SummaryVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			prometheus.MustRegister(metric)
+		case "prometheus.Summary" == fType:
+			metric := GetSummary(prefix, fName, publicLabels, publicKeys, rfTags)
+			*(*prometheus.Summary)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
+			prometheus.MustRegister(metric)
+			//Histogram
+		case reflect.TypeOf(histVec).String() == fType:
+			metric := GetHistogramVec(prefix, fName, publicLabels, publicKeys, rfTags)
+			*(*prometheus.HistogramVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			prometheus.MustRegister(metric)
+		case "prometheus.Histogram" == fType:
+			metric := GetHistogram(prefix, fName, publicLabels, publicKeys, rfTags)
+			*(*prometheus.Histogram)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
 			prometheus.MustRegister(metric)
 		default:
 			panic("invalid metric type")
@@ -95,12 +123,13 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 	}
 }
 
-func GetCounter(prefix, name string, publicKeys, rfTags []string) prometheus.Counter {
-	name = getName(prefix, name, rfTags)
+func GetCounter(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) prometheus.Counter {
+	name = getName(name, rfTags)
 	namespace := ""
 	if len(rfTags) > 2 {
 		namespace = rfTags[2]
 	}
+	namespace = getNameSpace(prefix, namespace)
 	subsystem := ""
 	if len(rfTags) > 3 {
 		subsystem = rfTags[3]
@@ -111,20 +140,22 @@ func GetCounter(prefix, name string, publicKeys, rfTags []string) prometheus.Cou
 	}
 	return prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name:      name,
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Help:      help,
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
 		})
 }
 
-func GetCounterVec(prefix, name string, publicKeys, rfTags []string) *prometheus.CounterVec {
+func GetCounterVec(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) *prometheus.CounterVec {
 	tags := getTags(publicKeys, rfTags)
-	name = getName(prefix, name, rfTags)
+	name = getName(name, rfTags)
 	namespace := ""
 	if len(rfTags) > 2 {
 		namespace = rfTags[2]
 	}
+	namespace = getNameSpace(prefix, namespace)
 	subsystem := ""
 	if len(rfTags) > 3 {
 		subsystem = rfTags[3]
@@ -135,19 +166,21 @@ func GetCounterVec(prefix, name string, publicKeys, rfTags []string) *prometheus
 	}
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name:      name,
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Help:      help,
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
 		}, tags)
 }
-func GetGaugeVec(prefix, name string, publicKeys, rfTags []string) *prometheus.GaugeVec {
+func GetGaugeVec(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) *prometheus.GaugeVec {
 	tags := getTags(publicKeys, rfTags)
-	name = getName(prefix, name, rfTags)
+	name = getName(name, rfTags)
 	namespace := ""
 	if len(rfTags) > 2 {
 		namespace = rfTags[2]
 	}
+	namespace = getNameSpace(prefix, namespace)
 	subsystem := ""
 	if len(rfTags) > 3 {
 		subsystem = rfTags[3]
@@ -158,11 +191,223 @@ func GetGaugeVec(prefix, name string, publicKeys, rfTags []string) *prometheus.G
 	}
 	return prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:      name,
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Help:      help,
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
 		}, tags)
+}
+
+func GetGauge(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) prometheus.Gauge {
+	name = getName(name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	namespace = getNameSpace(prefix, namespace)
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+	help := ""
+	if len(rfTags) > 4 {
+		help = rfTags[4]
+	}
+	return prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
+		})
+}
+
+func GetSummaryVec(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) *prometheus.SummaryVec {
+	tags := getTags(publicKeys, rfTags)
+	name = getName(name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	namespace = getNameSpace(prefix, namespace)
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+	objectives := make(map[float64]float64)
+	if len(rfTags) > 4 && rfTags[4] != "" {
+		values := strings.Split(rfTags[4], ",")
+		for _, value := range values {
+			keys := strings.Split(value, ":")
+			if len(keys) == 2 {
+				k, _ := strconv.ParseFloat(keys[0], 64)
+				v, _ := strconv.ParseFloat(keys[1], 64)
+				objectives[k] = v
+			}
+		}
+	}
+	maxAge := prometheus.DefMaxAge
+	if len(rfTags) > 5 && rfTags[5] != "" {
+		if v, err := strconv.ParseUint(rfTags[5], 10, 64); err == nil {
+			maxAge = time.Second * time.Duration(v)
+		}
+	}
+	var ageBuckets uint32 = prometheus.DefAgeBuckets
+	if len(rfTags) > 6 && rfTags[6] != "" {
+		if v, err := strconv.ParseUint(rfTags[6], 10, 32); err == nil {
+			ageBuckets = uint32(v)
+		}
+	}
+	var bufCap uint32 = prometheus.DefBufCap
+	if len(rfTags) > 7 && rfTags[7] != "" {
+		if v, err := strconv.ParseUint(rfTags[7], 10, 32); err == nil {
+			bufCap = uint32(v)
+		}
+	}
+	help := ""
+	if len(rfTags) > 8 {
+		help = rfTags[8]
+	}
+	return prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
+			Objectives:  objectives,
+			MaxAge:      maxAge,
+			AgeBuckets:  ageBuckets,
+			BufCap:      bufCap,
+		}, tags)
+}
+
+func GetSummary(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) prometheus.Summary {
+	name = getName(name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	namespace = getNameSpace(prefix, namespace)
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+	objectives := make(map[float64]float64)
+	if len(rfTags) > 4 && rfTags[4] != "" {
+		values := strings.Split(rfTags[4], ",")
+		for _, value := range values {
+			keys := strings.Split(value, ":")
+			if len(keys) == 2 {
+				k, _ := strconv.ParseFloat(keys[0], 64)
+				v, _ := strconv.ParseFloat(keys[1], 64)
+				objectives[k] = v
+			}
+		}
+	}
+	maxAge := prometheus.DefMaxAge
+	if len(rfTags) > 5 && rfTags[5] != "" {
+		if v, err := strconv.ParseUint(rfTags[5], 10, 64); err == nil {
+			maxAge = time.Second * time.Duration(v)
+		}
+	}
+	var ageBuckets uint32 = prometheus.DefAgeBuckets
+	if len(rfTags) > 6 && rfTags[6] != "" {
+		if v, err := strconv.ParseUint(rfTags[6], 10, 32); err == nil {
+			ageBuckets = uint32(v)
+		}
+	}
+	var bufCap uint32 = prometheus.DefBufCap
+	if len(rfTags) > 7 && rfTags[7] != "" {
+		if v, err := strconv.ParseUint(rfTags[7], 10, 32); err == nil {
+			bufCap = uint32(v)
+		}
+	}
+	help := ""
+	if len(rfTags) > 8 {
+		help = rfTags[8]
+	}
+	return prometheus.NewSummary(
+		prometheus.SummaryOpts{
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
+			Objectives:  objectives,
+			MaxAge:      maxAge,
+			AgeBuckets:  ageBuckets,
+			BufCap:      bufCap,
+		})
+}
+
+func getBuckets(rfTags []string) (buckets []float64) {
+	if len(rfTags) > 4 {
+		values := strings.Split(rfTags[4], ",")
+		if len(values) > 0 && values[0] != "" {
+			for _, v := range values {
+				if value, err := strconv.ParseFloat(v, 64); err == nil {
+					buckets = append(buckets, value)
+				}
+			}
+		}
+	}
+	return
+}
+func GetHistogramVec(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) *prometheus.HistogramVec {
+	tags := getTags(publicKeys, rfTags)
+	name = getName(name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	namespace = getNameSpace(prefix, namespace)
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+
+	help := ""
+	if len(rfTags) > 5 {
+		help = rfTags[5]
+	}
+	return prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
+			Buckets:     getBuckets(rfTags),
+		}, tags)
+}
+
+func GetHistogram(prefix, name string, constLabel prometheus.Labels, publicKeys, rfTags []string) prometheus.Histogram {
+	name = getName(name, rfTags)
+	namespace := ""
+	if len(rfTags) > 2 {
+		namespace = rfTags[2]
+	}
+	namespace = getNameSpace(prefix, namespace)
+	subsystem := ""
+	if len(rfTags) > 3 {
+		subsystem = rfTags[3]
+	}
+	help := ""
+	if len(rfTags) > 4 {
+		help = rfTags[4]
+	}
+	return prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:        name,
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Help:        help,
+			ConstLabels: constLabel,
+			Buckets:     getBuckets(rfTags),
+		})
 }
 
 func getTags(publicKeys, rfTags []string) []string {
@@ -173,7 +418,7 @@ func getTags(publicKeys, rfTags []string) []string {
 
 	if len(rfTags) > 1 {
 		rfLabels := strings.Split(rfTags[1], ",")
-		if len(rfLabels) == 1 && rfLabels[1] == "" {
+		if len(rfLabels) == 1 && rfLabels[0] == "" {
 			rfLabels = nil
 		}
 		for _, v := range rfLabels {
@@ -182,7 +427,7 @@ func getTags(publicKeys, rfTags []string) []string {
 	}
 	return tags
 }
-func getName(prefix, name string, rfTags []string) string {
+func getName(name string, rfTags []string) string {
 	if len(rfTags) > 0 && len(rfTags[0]) > 0 {
 		name = rfTags[0]
 	} else {
@@ -192,10 +437,20 @@ func getName(prefix, name string, rfTags []string) string {
 			name = ParseAttrName(name)
 		}
 	}
-	if prefix != "" {
-		name = prefix + "_" + name
-	}
 	return name
+}
+func getNameSpace(prefix, name string) (namespace string) {
+	if prefix != "" {
+		namespace = prefix
+	}
+	if name != "" {
+		if namespace != "" {
+			namespace += "_" + name
+		} else {
+			namespace = name
+		}
+	}
+	return
 }
 
 var (
@@ -242,47 +497,47 @@ var (
 	histogramMap = make(map[int]*prometheus.HistogramVec)
 )
 
-func GetLabels(labels prometheus.Labels) prometheus.Labels {
-	ls := make(prometheus.Labels, len(labels)+len(publicLabels))
-	for key, value := range publicLabels {
-		ls[key] = value
-	}
-	for key, value := range labels {
-		ls[key] = value
-	}
-	return ls
-}
-
-func GetLvs(lvs ...string) []string {
-	var vs []string
-	vs = append(vs, publicLvs...)
-	vs = append(vs, lvs...)
-	return vs
-}
+//func GetLabels(labels prometheus.Labels) prometheus.Labels {
+//	ls := make(prometheus.Labels, len(labels)+len(publicLabels))
+//	for key, value := range publicLabels {
+//		ls[key] = value
+//	}
+//	for key, value := range labels {
+//		ls[key] = value
+//	}
+//	return ls
+//}
+//
+//func GetLvs(lvs ...string) []string {
+//	var vs []string
+//	vs = append(vs, publicLvs...)
+//	vs = append(vs, lvs...)
+//	return vs
+//}
 
 func (c Counter) With(labels prometheus.Labels) prometheus.Counter {
 	if v, ok := counterMap[c.AttrValue()]; ok {
-		return v.With(GetLabels(labels))
+		return v.With(labels)
 	}
 	panic("no this Counter")
 }
 func (c Counter) WithLabelValues(lvs ...string) prometheus.Counter {
 	if v, ok := counterMap[c.AttrValue()]; ok {
-		return v.WithLabelValues(GetLvs(lvs...)...)
+		return v.WithLabelValues(lvs...)
 	}
 	panic("no this Counter")
 }
 
 func (c Counter) GetMetricWith(labels prometheus.Labels) (prometheus.Counter, error) {
 	if v, ok := counterMap[c.AttrValue()]; ok {
-		return v.GetMetricWith(GetLabels(labels))
+		return v.GetMetricWith(labels)
 	}
 	panic("no this Counter")
 }
 
 func (c Counter) GetMetricWithLabelValues(lvs ...string) (prometheus.Counter, error) {
 	if v, ok := counterMap[c.AttrValue()]; ok {
-		return v.GetMetricWithLabelValues(GetLvs(lvs...)...)
+		return v.GetMetricWithLabelValues(lvs...)
 	}
 	panic("no this Counter")
 }
