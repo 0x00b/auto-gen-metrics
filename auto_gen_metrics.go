@@ -75,10 +75,10 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 
 		rfTags := strings.Split(typeOfAttr.Field(i).Tag.Get("pml"), ";")
 
-		var counterVec prometheus.CounterVec
-		var gaugeVec prometheus.GaugeVec
-		var sumVec prometheus.SummaryVec
-		var histVec prometheus.HistogramVec
+		var counterVec *prometheus.CounterVec
+		var gaugeVec *prometheus.GaugeVec
+		var sumVec *prometheus.SummaryVec
+		var histVec *prometheus.HistogramVec
 
 		fType := f.Type().String()
 		switch true {
