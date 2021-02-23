@@ -1,12 +1,13 @@
 package auto_gen_metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func InitMetrics2(prefix string, Metrics interface{}, labels prometheus.Labels, publicTags []string) {
@@ -84,7 +85,7 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 		//Counter
 		case reflect.TypeOf(counterVec).String() == fType:
 			metric := GetCounterVec(prefix, fName, publicLabels, publicKeys, rfTags)
-			*(*prometheus.CounterVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			*(**prometheus.CounterVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
 			prometheus.MustRegister(metric)
 		case "prometheus.Counter" == fType:
 			metric := GetCounter(prefix, fName, publicLabels, publicKeys, rfTags)
@@ -93,7 +94,7 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 			//Gauge
 		case reflect.TypeOf(gaugeVec).String() == fType:
 			metric := GetGaugeVec(prefix, fName, publicLabels, publicKeys, rfTags)
-			*(*prometheus.GaugeVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			*(**prometheus.GaugeVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
 			prometheus.MustRegister(metric)
 		case "prometheus.Gauge" == fType:
 			metric := GetGauge(prefix, fName, publicLabels, publicKeys, rfTags)
@@ -102,7 +103,7 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 			//Summary
 		case reflect.TypeOf(sumVec).String() == fType:
 			metric := GetSummaryVec(prefix, fName, publicLabels, publicKeys, rfTags)
-			*(*prometheus.SummaryVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			*(**prometheus.SummaryVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
 			prometheus.MustRegister(metric)
 		case "prometheus.Summary" == fType:
 			metric := GetSummary(prefix, fName, publicLabels, publicKeys, rfTags)
@@ -111,7 +112,7 @@ func InitMetrics(prefix string, Metrics interface{}, labels prometheus.Labels, p
 			//Histogram
 		case reflect.TypeOf(histVec).String() == fType:
 			metric := GetHistogramVec(prefix, fName, publicLabels, publicKeys, rfTags)
-			*(*prometheus.HistogramVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = *metric
+			*(**prometheus.HistogramVec)(unsafe.Pointer(s.FieldByName(fName).Addr().Pointer())) = metric
 			prometheus.MustRegister(metric)
 		case "prometheus.Histogram" == fType:
 			metric := GetHistogram(prefix, fName, publicLabels, publicKeys, rfTags)
